@@ -39,7 +39,7 @@ jobs:
           
           IS_REPORT_TIME=false
           if [ "$CURRENT_MIN_UTC" -lt 30 ]; then
-             if [ "$CURRENT_HOUR_UTC" -eq 12 ] || [ "$CURRENT_HOUR_UTC" -eq 21 ]; then
+             if [ true ]; then
                 IS_REPORT_TIME=true
              fi
           fi
