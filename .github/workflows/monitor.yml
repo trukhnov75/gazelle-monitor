@@ -51,7 +51,7 @@ jobs:
           
           IS_REPORT_TIME=false
           if [ "$CURRENT_MIN_UTC" -lt 30 ]; then
-             if [ true ] || [ "$CURRENT_HOUR_UTC" -eq 12 ] || [ "$CURRENT_HOUR_UTC" -eq 21 ]; then
+             if [ "$CURRENT_HOUR_UTC" -eq 12 ] || [ "$CURRENT_HOUR_UTC" -eq 21 ]; then
                 IS_REPORT_TIME=true
                 echo "📊 Время отчета (8:00 или 17:00 Торонто)"
              fi
