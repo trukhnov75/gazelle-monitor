@@ -2,6 +2,7 @@ name: Gazelle Second Seat Monitor
 
 on:
   schedule:
+    # Проверка каждые 30 минут
     - cron: '0,30 * * * *'
   workflow_dispatch:
 
@@ -9,19 +10,92 @@ jobs:
   check-stock:
     runs-on: ubuntu-latest
     steps:
-      - name: Проверка наличия
+      # 1. Скачиваем код репозитория (чтобы видеть файл counter.txt)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Основная логика проверки
+      - name: Check Stock & Update Counter
+        id: monitor
         run: |
+          # --- Читаем текущий счетчик ---
+          if [ ! -f counter.txt ]; then
+            echo "0" > counter.txt
+          fi
+          COUNT=$(cat counter.txt)
+          COUNT=$((COUNT + 1))
+          echo "Current check count: $COUNT"
+          
+          # --- Проверяем сайт ---
           RESPONSE=$(curl -s "https://fromrebel.com/search?q=Gazelle+second+seat" -H "User-Agent: Mozilla/5.0")
           
+          FOUND=false
           if echo "$RESPONSE" | grep -i "second seat" | grep -q "Add to Cart" && ! echo "$RESPONSE" | grep -i "second seat" | grep -q "Sold Out"; then
+            FOUND=true
             echo "✅ ТОВАР НАЙДЕН!"
-            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
-              -d "chat_id=${{ secrets.TG_CHAT_ID }}" \
-              -d "text=🚨 GAZELLE SECOND SEAT В НАЛИЧИИ!%0A%0A🔗 https://fromrebel.com/search?q=Gazelle+second+seat%0A⏰ $(date)" \
-              -d "parse_mode=HTML"
           else
-            echo "❌ Пока нет в наличии. Проверено: $(date)"
+            echo "❌ Товар пока не найден."
           fi
+          
+          # --- Определяем время для отчета (Торонто) ---
+          # Торонто (лето) = UTC-4. 
+          # 8:00 Toronto = 12:00 UTC
+          # 17:00 Toronto = 21:00 UTC
+          CURRENT_HOUR_UTC=$(date -u +%H)
+          CURRENT_MIN_UTC=$(date -u +%M)
+          
+          IS_REPORT_TIME=false
+          # Проверяем, попал ли мы в окно отчета (с 00 по 29 минуту часа)
+          if [ "$CURRENT_MIN_UTC" -lt 30 ]; then
+             if [ "$CURRENT_HOUR_UTC" -eq 12 ] || [ "$CURRENT_HOUR_UTC" -eq 21 ]; then
+                IS_REPORT_TIME=true
+             fi
+          fi
+
+          # --- Формируем сообщения ---
+          TELEGRAM_MSG=""
+          RESET_COUNTER=false
+
+          if [ "$FOUND" = true ]; then
+            # Сценарий 1: Товар нашли!
+            TELEGRAM_MSG="🚨 <b>GAZELLE SECOND SEAT В НАЛИЧИИ!</b>%0A%0A🔗 https://fromrebel.com/search?q=Gazelle+second+seat%0A⏰ $(date -u)"
+            RESET_COUNTER=true # Сбрасываем счетчик, так как цель достигнута
+            
+          elif [ "$IS_REPORT_TIME" = true ]; then
+            # Сценарий 2: Время отчета (8 утра или 5 вечера)
+            TELEGRAM_MSG="📊 <b>Отчет о поиске</b>%0A🔍 Проверок с последнего сообщения: <b>$COUNT</b>%0A📅 Время: $(date -u)%0A🔗 Ссылка: https://fromrebel.com/search?q=Gazelle+second+seat"
+            RESET_COUNTER=true # Сбрасываем счетчик после отчета, чтобы считать заново до следующего
+          fi
+
+          # --- Сохраняем новое значение счетчика ---
+          if [ "$RESET_COUNTER" = true ]; then
+            echo "0" > counter.txt
+          else
+            echo "$COUNT" > counter.txt
+          fi
+          
+          # Передаем результат следующим шагам
+          echo "TELEGRAM_MSG=$TELEGRAM_MSG" >> $GITHUB_ENV
+
+      # 3. Сохраняем обновленный счетчик в репозиторий
+      - name: Save Counter
+        if: always() # Выполнять даже если были ошибки
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add counter.txt
+          # [skip ci] нужен, чтобы обновление файла не запускало бота снова по кругу
+          git commit -m "Update counter [skip ci]" || echo "No changes to commit"
+          git push
+
+      # 4. Отправляем сообщение в Telegram (если оно есть)
+      - name: Send Telegram Alert
+        if: env.TELEGRAM_MSG != ''
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TG_CHAT_ID }}" \
+            -d "text=${{ env.TELEGRAM_MSG }}" \
+            -d "parse_mode=HTML"
 
 env:
   TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
