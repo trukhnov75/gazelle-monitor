@@ -14,33 +14,46 @@ jobs:
 
       - name: Check Stock and Send Report
         run: |
-          # Читаем счетчик из артефакта или создаем новый
+          set +e  # 👈 Отключаем выход по ошибке (важно!)
+          
+          # Читаем счетчик
           if [ -f counter.txt ]; then
             COUNT=$(cat counter.txt)
           else
             COUNT=0
           fi
-          
-          # Увеличиваем счетчик
           COUNT=$((COUNT + 1))
-          echo "Проверка №$COUNT"
+          echo "🔢 Проверка №$COUNT"
           
           # Проверяем сайт
-          RESPONSE=$(curl -s "https://fromrebel.com/search?q=Gazelle+second+seat" -H "User-Agent: Mozilla/5.0")
+          echo "🔍 Скачиваем страницу fromrebel.com..."
+          RESPONSE=$(curl -s "https://fromrebel.com/search?q=Gazelle+second+seat" -H "User-Agent: Mozilla/5.0" || echo "ERROR")
           
-          FOUND=false
-          if echo "$RESPONSE" | grep -i "second seat" | grep -q "Add to Cart" && ! echo "$RESPONSE" | grep -i "second seat" | grep -q "Sold Out"; then
-            FOUND=true
+          if [ "$RESPONSE" = "ERROR" ] || [ -z "$RESPONSE" ]; then
+            echo "⚠️ Не удалось получить страницу сайта"
+            FOUND=false
+          else
+            echo "📄 Страница получена (${#RESPONSE} символов)"
+            # Проверяем наличие товара
+            if echo "$RESPONSE" | grep -qi "second seat" && echo "$RESPONSE" | grep -q "Add to Cart" && ! echo "$RESPONSE" | grep -q "Sold Out"; then
+              FOUND=true
+              echo "✅ Товар найден!"
+            else
+              FOUND=false
+              echo "❌ Товар не найден"
+            fi
           fi
           
-          # Определяем время (Торонто = UTC-4 летом)
+          # Время для отчета (Торонто = UTC-4)
           CURRENT_HOUR_UTC=$(date -u +%H)
           CURRENT_MIN_UTC=$(date -u +%M)
+          echo "⏰ UTC: ${CURRENT_HOUR_UTC}:${CURRENT_MIN_UTC}"
           
           IS_REPORT_TIME=false
           if [ "$CURRENT_MIN_UTC" -lt 30 ]; then
-             if [ true ]; then
+             if [ "$CURRENT_HOUR_UTC" -eq 12 ] || [ "$CURRENT_HOUR_UTC" -eq 21 ]; then
                 IS_REPORT_TIME=true
+                echo "📊 Время отчета (8:00 или 17:00 Торонто)"
              fi
           fi
           
@@ -56,18 +69,23 @@ jobs:
             NEW_COUNT=$COUNT
           fi
           
-          # Сохраняем новый счетчик
+          # Сохраняем счетчик
           echo "$NEW_COUNT" > counter.txt
+          echo "💾 Счетчик: $NEW_COUNT"
           
-          # Отправляем в Telegram если есть сообщение
+          # Отправляем в Telegram
           if [ -n "$TELEGRAM_MSG" ]; then
-            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
+            echo "📱 Отправка в Telegram..."
+            curl -v -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
               -d "chat_id=${{ secrets.TG_CHAT_ID }}" \
               -d "text=$TELEGRAM_MSG" \
-              -d "parse_mode=HTML"
+              -d "parse_mode=HTML" 2>&1 | tee /tmp/tg_response.txt
+            echo "📡 Ответ Telegram см. выше"
+          else
+            echo "🔇 Сообщение не отправлено (нет повода)"
           fi
           
-          echo "COUNTER=$NEW_COUNT" >> $GITHUB_ENV
+          echo "🏁 Завершено"
 
       - name: Upload counter
         uses: actions/upload-artifact@v4
@@ -85,5 +103,6 @@ jobs:
         continue-on-error: true
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
   TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
