@@ -27,5 +27,5 @@ jobs:
           fi
 
 env:
-  TG_BOT_TOKEN: ${{ AAEE8q_phdw_fBC8NgdGfUntrKq4HlLa5hQ }}
-  TG_CHAT_ID: ${{ 495407048 }}
+  TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+  TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
