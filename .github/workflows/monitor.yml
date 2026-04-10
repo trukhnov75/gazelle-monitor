@@ -60,27 +60,18 @@ jobs:
           echo "⏰ Toronto time: ${CURRENT_HOUR}:${CURRENT_MIN}"
 
           IS_REPORT_TIME=false
-          if [ "$CURRENT_HOUR" = "08" ] && [ "$CURRENT_MIN" = "27" ]; then
-            IS_REPORT_TIME=true
-            echo "📊 Утренний отчет"
-          fi
+if [ "$CURRENT_HOUR" = "08" ] && [ "$CURRENT_MIN" = "27" ]; then
+  IS_REPORT_TIME=true
+  echo "📊 Утренний отчет"
+fi
 
-          if [ "$CURRENT_HOUR" = "17" ] && [ "$CURRENT_MIN" = "27" ]; then
-            IS_REPORT_TIME=true
-            echo "📊 Вечерний отчет"
-          fi
+if [ "$CURRENT_HOUR" = "17" ] && [ "$CURRENT_MIN" = "27" ]; then
+  IS_REPORT_TIME=true
+  echo "📊 Вечерний отчет"
+fi
 
-          TELEGRAM_MSG=""
-          NEW_COUNT=$COUNT
-
-          if [ "$FOUND" = true ]; then
-            TELEGRAM_MSG="🚨 <b>GAZELLE SECOND SEAT В НАЛИЧИИ!</b>%0A%0A🔗 https://fromrebel.com/search?q=Gazelle+second+seat%0A⏰ $(date)"
-            NEW_COUNT=0
-          elif [ "$IS_REPORT_TIME" = true ]; then
-            TELEGRAM_MSG="📊 <b>Отчет о поиске</b>%0A🔍 Проверок с последнего сообщения: <b>$COUNT</b>%0A📅 Время: $(date)"
-            NEW_COUNT=0
-          fi
-
+TELEGRAM_MSG="🧪 <b>ТЕСТ TELEGRAM ИЗ GITHUB ACTIONS</b>%0A📅 Время: $(date)%0A🔢 COUNT=$COUNT%0A✅ Если ты видишь это сообщение, значит бот и chat_id работают"
+NEW_COUNT=$COUNT
           echo "$NEW_COUNT" > counter.txt
           echo "💾 Счетчик сохранен: $NEW_COUNT"
 
