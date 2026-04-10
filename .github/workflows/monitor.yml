@@ -5,6 +5,9 @@ on:
     - cron: '27,57 * * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   check-stock:
     runs-on: ubuntu-latest
@@ -12,6 +15,7 @@ jobs:
     env:
       TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
       TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+      TZ: America/Toronto
 
     steps:
       - name: Checkout repository
@@ -29,38 +33,45 @@ jobs:
           fi
 
           COUNT=$((COUNT + 1))
-          echo "Проверка №$COUNT"
+          echo "🔢 Проверка №$COUNT"
 
-          echo "Скачиваем страницу fromrebel.com..."
-          RESPONSE=$(curl -sL "https://fromrebel.com/search?q=Gazelle+second+seat" -H "User-Agent: Mozilla/5.0" || echo "ERROR")
+          echo "🔍 Скачиваем страницу fromrebel.com..."
+          RESPONSE=$(curl -sL "https://fromrebel.com/search?q=Gazelle+second+seat" \
+            -H "User-Agent: Mozilla/5.0" || echo "ERROR")
 
           if [ "$RESPONSE" = "ERROR" ] || [ -z "$RESPONSE" ]; then
-            echo "Не удалось получить страницу сайта"
+            echo "⚠️ Не удалось получить страницу сайта"
             FOUND=false
           else
-            echo "Страница получена (${#RESPONSE} символов)"
+            echo "📄 Страница получена (${#RESPONSE} символов)"
             if echo "$RESPONSE" | grep -qi "second seat" && \
                echo "$RESPONSE" | grep -q "Add to Cart" && \
                ! echo "$RESPONSE" | grep -q "Sold Out"; then
               FOUND=true
-              echo "Товар найден"
+              echo "✅ Товар найден!"
             else
               FOUND=false
-              echo "Товар не найден"
+              echo "❌ Товар не найден"
             fi
           fi
 
-          CURRENT_HOUR_UTC=$(date -u +%H)
-          CURRENT_MIN_UTC=$(date -u +%M)
+          CURRENT_HOUR=$(date +%H)
+          CURRENT_MIN=$(date +%M)
+          echo "⏰ Toronto time: ${CURRENT_HOUR}:${CURRENT_MIN}"
 
           IS_REPORT_TIME=false
-          if [ "$CURRENT_MIN_UTC" -ge 27 ] && [ "$CURRENT_MIN_UTC" -lt 30 ]; then
-            if [ "$CURRENT_HOUR_UTC" -eq 12 ] || [ "$CURRENT_HOUR_UTC" -eq 21 ]; then
-              IS_REPORT_TIME=true
-            fi
+          if [ "$CURRENT_HOUR" = "08" ] && [ "$CURRENT_MIN" = "27" ]; then
+            IS_REPORT_TIME=true
+            echo "📊 Утренний отчет"
+          fi
+
+          if [ "$CURRENT_HOUR" = "17" ] && [ "$CURRENT_MIN" = "27" ]; then
+            IS_REPORT_TIME=true
+            echo "📊 Вечерний отчет"
           fi
 
           TELEGRAM_MSG=""
+          NEW_COUNT=$COUNT
 
           if [ "$FOUND" = true ]; then
             TELEGRAM_MSG="🚨 <b>GAZELLE SECOND SEAT В НАЛИЧИИ!</b>%0A%0A🔗 https://fromrebel.com/search?q=Gazelle+second+seat%0A⏰ $(date)"
@@ -68,17 +79,31 @@ jobs:
           elif [ "$IS_REPORT_TIME" = true ]; then
             TELEGRAM_MSG="📊 <b>Отчет о поиске</b>%0A🔍 Проверок с последнего сообщения: <b>$COUNT</b>%0A📅 Время: $(date)"
             NEW_COUNT=0
-          else
-            NEW_COUNT=$COUNT
           fi
 
           echo "$NEW_COUNT" > counter.txt
+          echo "💾 Счетчик сохранен: $NEW_COUNT"
 
           if [ -n "$TELEGRAM_MSG" ]; then
+            echo "📱 Отправка в Telegram..."
             curl -sS -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" \
               -d "chat_id=$TG_CHAT_ID" \
               -d "text=$TELEGRAM_MSG" \
               -d "parse_mode=HTML"
           else
-            echo "Сообщение не отправлено"
+            echo "🔇 Сообщение не отправлено"
           fi
+
+      - name: Commit updated counter
+        shell: bash
+        run: |
+          if git diff --quiet counter.txt; then
+            echo "Нет изменений в counter.txt"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add counter.txt
+          git commit -m "Update counter [skip ci]"
+          git push
