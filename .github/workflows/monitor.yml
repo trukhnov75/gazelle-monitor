@@ -1,9 +1,7 @@
 name: Gazelle Second Seat Monitor
 
 on:
-  schedule:
-    - cron: '27,57 * * * *'
-  workflow_dispatch:
+    workflow_dispatch:
 
 permissions:
   contents: write
