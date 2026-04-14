@@ -44,9 +44,7 @@ jobs:
           else
             echo "📄 Страница получена (${#RESPONSE} символов)"
 
-            if echo "$RESPONSE" | grep -qi "second seat" && \
-               echo "$RESPONSE" | grep -q "Add to Cart" && \
-               ! echo "$RESPONSE" | grep -q "Sold Out"; then
+            if echo "$RESPONSE" | grep -qi "second seat"; then
               FOUND=true
               echo "✅ Товар найден"
             else
