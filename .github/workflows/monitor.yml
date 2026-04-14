@@ -46,7 +46,6 @@ jobs:
 
               FOUND=true
               echo "✅ Товар найден"
-            fi
           fi
 
           CURRENT_HOUR=$(date +%H)
