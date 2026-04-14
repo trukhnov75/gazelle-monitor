@@ -44,8 +44,15 @@ jobs:
           else
             echo "📄 Страница получена (${#RESPONSE} символов)"
 
+            if echo "$RESPONSE" | grep -qi "second seat" && \
+               echo "$RESPONSE" | grep -q "Add to Cart" && \
+               ! echo "$RESPONSE" | grep -q "Sold Out"; then
               FOUND=true
               echo "✅ Товар найден"
+            else
+              FOUND=false
+              echo "❌ Товар не найден"
+            fi
           fi
 
           CURRENT_HOUR=$(date +%H)
