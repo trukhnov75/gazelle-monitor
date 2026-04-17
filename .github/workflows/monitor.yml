@@ -62,12 +62,12 @@ jobs:
           echo "⏰ Toronto time: $CURRENT_TIME"
 
           IS_REPORT_TIME=false
-          if [ "$CURRENT_HOUR" = "08" ] && [ "$CURRENT_MIN" = "30" ]; then
+          if [ "$CURRENT_HOUR" = "06" ] && [ "$CURRENT_MIN" = "30" ]; then
             IS_REPORT_TIME=true
             echo "📊 Время утреннего отчета"
           fi
 
-          if [ "$CURRENT_HOUR" = "18" ] && [ "$CURRENT_MIN" = "30" ]; then
+          if [ "$CURRENT_HOUR" = "16" ] && [ "$CURRENT_MIN" = "30" ]; then
             IS_REPORT_TIME=true
             echo "📊 Время вечернего отчета"
           fi
