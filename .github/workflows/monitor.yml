@@ -35,70 +35,49 @@ jobs:
           COUNT=$((COUNT + 1))
           echo "Проверка номер $COUNT"
 
-          SEARCH_URL="https://fromrebel.com/search?q=Gazelle+second+seat"
-          echo "Проверяем: $SEARCH_URL"
-
-          SEARCH_HTML=$(curl -sL "$SEARCH_URL" -H "User-Agent: Mozilla/5.0" || echo "ERROR")
+          cat > urls.txt <<'EOF'
+          https://fromrebel.com/products/second-seat-for-gazelle-s-stroller-moon-black-1d0720
+          https://fromrebel.com/products/gazelle-s-2-second-seat-moon-black-e2b1af
+          https://fromrebel.com/products/second-seat-for-gazelle-s-stroller-lava-grey-159934
+          https://fromrebel.com/products/second-seat-for-gazelle-s-stroller-navy-f6000f
+          https://fromrebel.com/products/second-seat-for-egazelle-and-gazelle-s-strollers-stone-grey-da079e
+          https://fromrebel.com/products/cybex-egazellegazelle-s-second-seat-ocean-blue-9be927
+          https://fromrebel.com/products/egazellegazelle-s-2-second-seat-5b3222
+          EOF
 
           FOUND=false
           FOUND_URL=""
           FOUND_TITLE=""
 
-          > product_links.txt
-          > matched_links.txt
+          while IFS= read -r PRODUCT_URL; do
+            [ -z "$PRODUCT_URL" ] && continue
 
-          if [ "$SEARCH_HTML" = "ERROR" ] || [ -z "$SEARCH_HTML" ]; then
-            echo "Не удалось получить страницу поиска"
-          else
-            echo "$SEARCH_HTML" | grep -oE 'href="/products/[^"]+"' | sed 's/href="//; s/"$//' | sort -u > product_links.txt
+            echo "Проверяем карточку: $PRODUCT_URL"
 
-            echo "Найдено ссылок:"
-            cat product_links.txt || true
+            PRODUCT_HTML=$(curl -sL "$PRODUCT_URL" -H "User-Agent: Mozilla/5.0" || echo "ERROR")
 
-            while IFS= read -r PATH_PART; do
-              HANDLE=$(basename "$PATH_PART")
+            if [ "$PRODUCT_HTML" = "ERROR" ] || [ -z "$PRODUCT_HTML" ]; then
+              echo "Не удалось получить карточку"
+              continue
+            fi
 
-              if echo "$HANDLE" | grep -Eiq 'gazelle.*second.*seat|second.*seat.*gazelle|egazelle.*second.*seat'; then
-                echo "https://fromrebel.com$PATH_PART" >> matched_links.txt
-              fi
-            done < product_links.txt
+            TITLE=$(echo "$PRODUCT_HTML" | grep -oE '<title>[^<]+' | sed 's/<title>//' | head -n 1)
+            [ -z "$TITLE" ] && TITLE="$PRODUCT_URL"
 
-            echo "Подходящие карточки:"
-            cat matched_links.txt || true
+            echo "Название: $TITLE"
 
-            while IFS= read -r PRODUCT_URL; do
-              [ -z "$PRODUCT_URL" ] && continue
-
-              echo "Проверяем карточку: $PRODUCT_URL"
-
-              PRODUCT_HTML=$(curl -sL "$PRODUCT_URL" -H "User-Agent: Mozilla/5.0" || echo "ERROR")
-
-              if [ "$PRODUCT_HTML" = "ERROR" ] || [ -z "$PRODUCT_HTML" ]; then
-                echo "Не удалось получить карточку"
-                continue
-              fi
-
-              TITLE=$(echo "$PRODUCT_HTML" | grep -oE '<title>[^<]+' | sed 's/<title>//' | head -n 1)
-
-              if [ -z "$TITLE" ]; then
-                TITLE="$PRODUCT_URL"
-              fi
-
-              echo "Название: $TITLE"
-
-              if echo "$PRODUCT_HTML" | grep -Eiq 'gazelle' && \
-                 echo "$PRODUCT_HTML" | grep -Eiq 'second seat|2nd seat' && \
-                 ! echo "$PRODUCT_HTML" | grep -Eiq 'Sold Out'; then
-                FOUND=true
-                FOUND_URL="$PRODUCT_URL"
-                FOUND_TITLE="$TITLE"
-                echo "Товар найден в наличии"
-                break
-              else
-                echo "Нет в наличии"
-              fi
-            done < matched_links.txt
-          fi
+            if echo "$PRODUCT_HTML" | grep -Eiq 'gazelle' && \
+               echo "$PRODUCT_HTML" | grep -Eiq 'second seat|2nd seat' && \
+               ! echo "$PRODUCT_HTML" | grep -Eiq 'Sold Out'; then
+              FOUND=true
+              FOUND_URL="$PRODUCT_URL"
+              FOUND_TITLE="$TITLE"
+              echo "Товар найден в наличии"
+              break
+            else
+              echo "Нет в наличии"
+            fi
+          done < urls.txt
 
           CURRENT_HOUR=$(date +%H)
           CURRENT_MIN=$(date +%M)
