@@ -1,11 +1,166 @@
-name: Test manual run
+name: Gazelle Second Seat Monitor
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: write
 
 jobs:
-  test:
+  check-stock:
     runs-on: ubuntu-latest
+
+    env:
+      TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+      TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+      TZ: America/Toronto
+
     steps:
-      - name: Hello
-        run: echo "Manual run works"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check stock and send Telegram
+        shell: bash
+        run: |
+          set +e
+
+          if [ -f counter.txt ]; then
+            COUNT=$(cat counter.txt)
+          else
+            COUNT=0
+          fi
+
+          COUNT=$((COUNT + 1))
+          echo "Проверка номер $COUNT"
+
+          SEARCH_URL="https://fromrebel.com/search?q=Gazelle+second+seat"
+          echo "Проверяем: $SEARCH_URL"
+
+          SEARCH_HTML=$(curl -sL "$SEARCH_URL" -H "User-Agent: Mozilla/5.0" || echo "ERROR")
+
+          FOUND=false
+          FOUND_URL=""
+          FOUND_TITLE=""
+
+          > product_links.txt
+          > matched_links.txt
+
+          if [ "$SEARCH_HTML" = "ERROR" ] || [ -z "$SEARCH_HTML" ]; then
+            echo "Не удалось получить страницу поиска"
+          else
+            echo "$SEARCH_HTML" | grep -oE 'href="/products/[^"]+"' | sed 's/href="//; s/"$//' | sort -u > product_links.txt
+
+            echo "Найдено ссылок:"
+            cat product_links.txt || true
+
+            while IFS= read -r PATH_PART; do
+              HANDLE=$(basename "$PATH_PART")
+
+              if echo "$HANDLE" | grep -Eiq 'gazelle.*second.*seat|second.*seat.*gazelle|egazelle.*second.*seat'; then
+                echo "https://fromrebel.com$PATH_PART" >> matched_links.txt
+              fi
+            done < product_links.txt
+
+            echo "Подходящие карточки:"
+            cat matched_links.txt || true
+
+            while IFS= read -r PRODUCT_URL; do
+              [ -z "$PRODUCT_URL" ] && continue
+
+              echo "Проверяем карточку: $PRODUCT_URL"
+
+              PRODUCT_HTML=$(curl -sL "$PRODUCT_URL" -H "User-Agent: Mozilla/5.0" || echo "ERROR")
+
+              if [ "$PRODUCT_HTML" = "ERROR" ] || [ -z "$PRODUCT_HTML" ]; then
+                echo "Не удалось получить карточку"
+                continue
+              fi
+
+              TITLE=$(echo "$PRODUCT_HTML" | grep -oE '<title>[^<]+' | sed 's/<title>//' | head -n 1)
+
+              if [ -z "$TITLE" ]; then
+                TITLE="$PRODUCT_URL"
+              fi
+
+              echo "Название: $TITLE"
+
+              if echo "$PRODUCT_HTML" | grep -Eiq 'gazelle' && \
+                 echo "$PRODUCT_HTML" | grep -Eiq 'second seat|2nd seat' && \
+                 ! echo "$PRODUCT_HTML" | grep -Eiq 'Sold Out'; then
+                FOUND=true
+                FOUND_URL="$PRODUCT_URL"
+                FOUND_TITLE="$TITLE"
+                echo "Товар найден в наличии"
+                break
+              else
+                echo "Нет в наличии"
+              fi
+            done < matched_links.txt
+          fi
+
+          CURRENT_HOUR=$(date +%H)
+          CURRENT_MIN=$(date +%M)
+          CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')
+
+          IS_REPORT_TIME=false
+
+          if [ "$CURRENT_HOUR" = "06" ] && [ "$CURRENT_MIN" = "30" ]; then
+            IS_REPORT_TIME=true
+          fi
+
+          if [ "$CURRENT_HOUR" = "16" ] && [ "$CURRENT_MIN" = "30" ]; then
+            IS_REPORT_TIME=true
+          fi
+
+          TELEGRAM_MSG=""
+          NEW_COUNT=$COUNT
+
+          if [ "$FOUND" = true ]; then
+            TELEGRAM_MSG="🚨 Gazelle Second Seat в наличии!%0A%0A📦 $FOUND_TITLE%0A🔗 $FOUND_URL%0A📅 $CURRENT_TIME"
+            NEW_COUNT=0
+          elif [ "$IS_REPORT_TIME" = true ]; then
+            TELEGRAM_MSG="📊 Отчет о поиске%0A🔍 Проверок с последнего сообщения: $COUNT%0A📅 $CURRENT_TIME"
+            NEW_COUNT=0
+          fi
+
+          echo "$NEW_COUNT" > counter.txt
+          echo "Счетчик сохранен: $NEW_COUNT"
+
+          if [ -n "$TELEGRAM_MSG" ]; then
+            echo "Отправка сообщения в Telegram"
+
+            TG_RESPONSE=$(curl -sS -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" \
+              -d "chat_id=$TG_CHAT_ID" \
+              -d "text=$TELEGRAM_MSG")
+
+            echo "$TG_RESPONSE"
+
+            if echo "$TG_RESPONSE" | grep -q '"ok":true'; then
+              echo "Сообщение отправлено"
+            else
+              echo "Ошибка отправки в Telegram"
+            fi
+          else
+            echo "Сообщение не отправляем"
+          fi
+
+      - name: Commit updated counter
+        shell: bash
+        run: |
+          if [ ! -f counter.txt ]; then
+            echo "counter.txt не существует"
+            exit 0
+          fi
+
+          if git diff --quiet counter.txt; then
+            echo "Нет изменений в counter.txt"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add counter.txt
+          git commit -m "Update counter"
+          git push
