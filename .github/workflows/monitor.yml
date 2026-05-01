@@ -34,49 +34,32 @@ jobs:
 
           COUNT=$((COUNT + 1))
           echo "Проверка номер $COUNT"
-          echo "Запрашиваем Shopify JSON"
 
-          RESPONSE=$(curl -sL --get "https://fromrebel.com/search/suggest.json" \
-            -H "User-Agent: Mozilla/5.0" \
-            --data-urlencode "q=gazelle second seat" \
-            --data-urlencode "resources[type]=product" \
-            --data-urlencode "resources[limit]=10" \
-            --data-urlencode "resources[options][unavailable_products]=show" \
-            --data-urlencode "resources[options][fields]=title,product_type,variants.title,body,vendor")
+          SEARCH_URL="https://fromrebel.com/search?q=Gazelle+second+seat"
+          echo "Проверяем HTML поиска"
+
+          HTML=$(curl -sL "$SEARCH_URL" -H "User-Agent: Mozilla/5.0" || echo "ERROR")
 
           FOUND=false
-          FOUND_TITLE=""
-          FOUND_URL=""
+          MATCH_TEXT=""
 
-          if [ -z "$RESPONSE" ]; then
-            echo "Не удалось получить JSON"
+          if [ "$HTML" = "ERROR" ] || [ -z "$HTML" ]; then
+            echo "Не удалось получить страницу поиска"
           else
-            echo "$RESPONSE" > search_response.json
-            echo "JSON получен"
+            echo "HTML получен, размер: ${#HTML}"
 
-            echo "Результаты поиска:"
-            jq -r '.resources.results.products[]? | "TITLE: \(.title)\nURL: \(.url)\nAVAILABLE: \(.available)\n---"' search_response.json || true
+            if echo "$HTML" | grep -Eiq 'Gazelle S 2 Second Seat|Second Seat for Gazelle|Gazelle.*Second Seat|Second Seat.*Gazelle'; then
+              echo "Найден текст Gazelle Second Seat"
 
-            FOUND_LINE=$(jq -r '
-              .resources.results.products[]?
-              | select(
-                  (.title | ascii_downcase | contains("gazelle")) and
-                  (
-                    (.title | ascii_downcase | contains("second seat")) or
-                    (.title | ascii_downcase | contains("2nd seat"))
-                  ) and
-                  (.available == true)
-                )
-              | @base64
-            ' search_response.json | head -n 1)
-
-            if [ -n "$FOUND_LINE" ]; then
-              FOUND=true
-              FOUND_TITLE=$(echo "$FOUND_LINE" | base64 -d | jq -r '.title')
-              FOUND_URL=$(echo "$FOUND_LINE" | base64 -d | jq -r '.url')
-              echo "Найден товар в наличии: $FOUND_TITLE"
+              if echo "$HTML" | grep -Eiq 'Only 1 Left!|Only 2 Left!|Add to Cart'; then
+                FOUND=true
+                MATCH_TEXT="Gazelle Second Seat найден на странице поиска с признаком наличия"
+                echo "Найден признак наличия"
+              else
+                echo "Признак наличия не найден"
+              fi
             else
-              echo "Товар в наличии не найден"
+              echo "Gazelle Second Seat на странице не найден"
             fi
           fi
 
@@ -98,11 +81,7 @@ jobs:
           NEW_COUNT=$COUNT
 
           if [ "$FOUND" = true ]; then
-            if [[ "$FOUND_URL" != http* ]]; then
-              FOUND_URL="https://fromrebel.com$FOUND_URL"
-            fi
-
-            TELEGRAM_MSG="🚨 Gazelle Second Seat в наличии!%0A%0A📦 $FOUND_TITLE%0A🔗 $FOUND_URL%0A📅 $CURRENT_TIME"
+            TELEGRAM_MSG="🚨 Gazelle Second Seat в наличии!%0A%0A🔗 $SEARCH_URL%0A📝 $MATCH_TEXT%0A📅 $CURRENT_TIME"
             NEW_COUNT=0
           elif [ "$IS_REPORT_TIME" = true ]; then
             TELEGRAM_MSG="📊 Отчет о поиске%0A🔍 Проверок с последнего сообщения: $COUNT%0A📅 $CURRENT_TIME"
