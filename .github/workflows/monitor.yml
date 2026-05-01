@@ -1,4 +1,4 @@
-name: Gazelle Second Seat Monitor
+Gazelle Second Seat Monitor
 
 on:
   workflow_dispatch:
