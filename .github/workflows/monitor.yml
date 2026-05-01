@@ -82,7 +82,11 @@ jobs:
           NEW_COUNT=$COUNT
 
           if [ "$FOUND" = true ]; then
-            TELEGRAM_MSG="🚨 Gazelle Second Seat в наличии!%0A%0A🔗 $SEARCH_URL%0A📝 $MATCH_TEXT%0A📅 $CURRENT_TIME"
+            TELEGRAM_MSG="🚨 Gazelle Second Seat в наличии!
+            🔗 $SEARCH_URL
+            📝 $MATCH_TEXT
+            📅 $CURRENT_TIME"
+
             NEW_COUNT=0
           elif [ "$IS_REPORT_TIME" = true ]; then
             TELEGRAM_MSG="📊 Отчет о поиске%0A🔍 Проверок с последнего сообщения: $COUNT%0A📅 $CURRENT_TIME"
