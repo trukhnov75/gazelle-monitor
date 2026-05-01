@@ -35,14 +35,154 @@ jobs:
           COUNT=$((COUNT + 1))
           echo "Проверка номер $COUNT"
 
-          SEARCH_URL='https://fromrebel.com/search/suggest.json?q=gazelle%20second%20seat&resources[type]=product&resources[limit]=10&resources[options][unavailable_products]=show&resources[options][fields]=title,product_type,variants.title,body,vendor'
-
-          echo "Проверяем JSON: $SEARCH_URL"
-          RESPONSE=$(curl -sL "$SEARCH_URL" -H "User-Agent: Mozilla/5.0" || echo "ERROR")
+          RESPONSE=$(curl -sL --get "https://fromrebel.com/search/suggest.json" \
+            -H "User-Agent: Mozilla/5.0" \
+            --data-urlencode "q=gazelle second seat" \
+            --data-urlencode "resources[type]=product" \
+            --data-urlencode "resources[limit]=10" \
+            --data-urlencode "resources[options][unavailable_products]=show" \
+            --data-urlencode "resources[options][fields]=title,product_type,variants.title,body,vendor" \
+            || echo "ERROR")
 
           FOUND=false
           FOUND_TITLE=""
           FOUND_URL=""
-          DEBUG_FILE="search_response.json"
 
-          i
+          if [ "$RESPONSE" = "ERROR" ] || [ -z "$RESPONSE" ]; then
+            echo "Не удалось получить JSON"
+          else
+            echo "$RESPONSE" > search_response.json
+            echo "JSON получен, размер: ${#RESPONSE}"
+
+            python3 <<'PY'
+import json
+
+try:
+    with open("search_response.json", "r", encoding="utf-8") as f:
+        data = json.load(f)
+except Exception as e:
+    with open("parsed_products.txt", "w", encoding="utf-8") as out:
+        out.write(f"JSON_ERROR: {e}\n")
+    raise
+
+products = data.get("resources", {}).get("results", {}).get("products", [])
+
+with open("parsed_products.txt", "w", encoding="utf-8") as out:
+    if not products:
+        out.write("NO_PRODUCTS\n")
+    for p in products:
+        title = p.get("title", "") or ""
+        url = p.get("url", "") or ""
+        available = False
+
+        for v in p.get("variants", []):
+            if v.get("available") is True:
+                available = True
+                break
+
+        out.write(f"TITLE: {title}\n")
+        out.write(f"URL: {url}\n")
+        out.write(f"AVAILABLE: {available}\n")
+        out.write("---\n")
+PY
+
+            echo "Результаты поиска:"
+            cat parsed_products.txt || true
+
+            CURRENT_TITLE=""
+            CURRENT_URL=""
+            CURRENT_AVAILABLE="False"
+
+            while IFS= read -r LINE; do
+              if echo "$LINE" | grep -q '^TITLE:'; then
+                CURRENT_TITLE=$(echo "$LINE" | sed 's/^TITLE: //')
+              fi
+
+              if echo "$LINE" | grep -q '^URL:'; then
+                CURRENT_URL=$(echo "$LINE" | sed 's/^URL: //')
+              fi
+
+              if echo "$LINE" | grep -q '^AVAILABLE:'; then
+                CURRENT_AVAILABLE=$(echo "$LINE" | sed 's/^AVAILABLE: //')
+
+                if echo "$CURRENT_TITLE" | grep -Eiq 'gazelle' && \
+                   echo "$CURRENT_TITLE" | grep -Eiq 'second seat|2nd seat' && \
+                   [ "$CURRENT_AVAILABLE" = "True" ]; then
+                  FOUND=true
+                  FOUND_TITLE="$CURRENT_TITLE"
+                  FOUND_URL="$CURRENT_URL"
+                  echo "Найден товар в наличии: $FOUND_TITLE"
+                  break
+                fi
+              fi
+            done < parsed_products.txt
+          fi
+
+          CURRENT_HOUR=$(date +%H)
+          CURRENT_MIN=$(date +%M)
+          CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')
+
+          IS_REPORT_TIME=false
+
+          if [ "$CURRENT_HOUR" = "06" ] && [ "$CURRENT_MIN" = "30" ]; then
+            IS_REPORT_TIME=true
+          fi
+
+          if [ "$CURRENT_HOUR" = "16" ] && [ "$CURRENT_MIN" = "30" ]; then
+            IS_REPORT_TIME=true
+          fi
+
+          TELEGRAM_MSG=""
+          NEW_COUNT=$COUNT
+
+          if [ "$FOUND" = true ]; then
+            if [[ "$FOUND_URL" != http* ]]; then
+              FOUND_URL="https://fromrebel.com$FOUND_URL"
+            fi
+
+            TELEGRAM_MSG="🚨 Gazelle Second Seat в наличии!%0A%0A📦 $FOUND_TITLE%0A🔗 $FOUND_URL%0A📅 $CURRENT_TIME"
+            NEW_COUNT=0
+          elif [ "$IS_REPORT_TIME" = true ]; then
+            TELEGRAM_MSG="📊 Отчет о поиске%0A🔍 Проверок с последнего сообщения: $COUNT%0A📅 $CURRENT_TIME"
+            NEW_COUNT=0
+          fi
+
+          echo "$NEW_COUNT" > counter.txt
+          echo "Счетчик сохранен: $NEW_COUNT"
+
+          if [ -n "$TELEGRAM_MSG" ]; then
+            echo "Отправка сообщения в Telegram"
+
+            TG_RESPONSE=$(curl -sS -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" \
+              -d "chat_id=$TG_CHAT_ID" \
+              --data-urlencode "text=$TELEGRAM_MSG")
+
+            echo "$TG_RESPONSE"
+
+            if echo "$TG_RESPONSE" | grep -q '"ok":true'; then
+              echo "Сообщение отправлено"
+            else
+              echo "Ошибка отправки в Telegram"
+            fi
+          else
+            echo "Сообщение не отправляем"
+          fi
+
+      - name: Commit updated counter
+        shell: bash
+        run: |
+          if [ ! -f counter.txt ]; then
+            echo "counter.txt не существует"
+            exit 0
+          fi
+
+          if git diff --quiet counter.txt; then
+            echo "Нет изменений в counter.txt"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add counter.txt
+          git commit -m "Update counter"
+          git push
