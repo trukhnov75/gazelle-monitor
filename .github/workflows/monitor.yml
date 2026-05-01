@@ -38,20 +38,21 @@ jobs:
           SEARCH_URL="https://fromrebel.com/search?q=Gazelle+second+seat"
           echo "Проверяем HTML поиска"
 
-          HTML=$(curl -sL "$SEARCH_URL" -H "User-Agent: Mozilla/5.0" || echo "ERROR")
+          curl -sL "$SEARCH_URL" -H "User-Agent: Mozilla/5.0" -o search_page.html
 
           FOUND=false
           MATCH_TEXT=""
 
-          if [ "$HTML" = "ERROR" ] || [ -z "$HTML" ]; then
+          if [ ! -s search_page.html ]; then
             echo "Не удалось получить страницу поиска"
           else
-            echo "HTML получен, размер: ${#HTML}"
+            SIZE=$(wc -c < search_page.html)
+            echo "HTML получен, размер: $SIZE"
 
-            if echo "$HTML" | grep -Eiq 'Gazelle S 2 Second Seat|Second Seat for Gazelle|Gazelle.*Second Seat|Second Seat.*Gazelle'; then
+            if grep -Eiq 'Gazelle S 2 Second Seat|Second Seat for Gazelle|Gazelle.*Second Seat|Second Seat.*Gazelle' search_page.html; then
               echo "Найден текст Gazelle Second Seat"
 
-              if echo "$HTML" | grep -Eiq 'Only 1 Left!|Only 2 Left!|Add to Cart'; then
+              if grep -Eiq 'Only 1 Left!|Only 2 Left!|Add to Cart' search_page.html; then
                 FOUND=true
                 MATCH_TEXT="Gazelle Second Seat найден на странице поиска с признаком наличия"
                 echo "Найден признак наличия"
