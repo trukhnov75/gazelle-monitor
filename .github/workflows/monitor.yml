@@ -87,4 +87,51 @@ jobs:
             IS_REPORT_TIME=true
           fi
 
-          TELEGRAM
+          TELEGRAM_MSG=""
+          NEW_COUNT=$COUNT
+
+          if [ "$FOUND" = true ]; then
+            TELEGRAM_MSG=$(printf '🚨 Gazelle Second Seat в наличии!\n\n🔗 %s\n📝 %s\n📅 %s' "$SEARCH_URL" "$MATCH_TEXT" "$CURRENT_TIME")
+            NEW_COUNT=0
+          elif [ "$IS_REPORT_TIME" = true ]; then
+            TELEGRAM_MSG=$(printf '📊 Отчет о поиске\n🔍 Проверок с последнего сообщения: %s\n📅 %s' "$COUNT" "$CURRENT_TIME")
+            NEW_COUNT=0
+          fi
+
+          echo "$NEW_COUNT" > counter.txt
+          echo "Счетчик сохранен: $NEW_COUNT"
+
+          if [ -n "$TELEGRAM_MSG" ]; then
+            echo "Отправка сообщения в Telegram"
+            TG_RESPONSE=$(curl -sS -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" \
+              -d "chat_id=$TG_CHAT_ID" \
+              --data-urlencode "text=$TELEGRAM_MSG")
+            echo "$TG_RESPONSE"
+
+            if echo "$TG_RESPONSE" | grep -q '"ok":true'; then
+              echo "Сообщение отправлено"
+            else
+              echo "Ошибка отправки в Telegram"
+            fi
+          else
+            echo "Сообщение не отправляем"
+          fi
+
+      - name: Commit updated counter
+        shell: bash
+        run: |
+          if [ ! -f counter.txt ]; then
+            echo "counter.txt не существует"
+            exit 0
+          fi
+
+          if git diff --quiet counter.txt; then
+            echo "Нет изменений в counter.txt"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add counter.txt
+          git commit -m "Update counter"
+          git push
