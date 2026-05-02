@@ -11,7 +11,6 @@ permissions:
 jobs:
   check-stock:
     runs-on: ubuntu-latest
-
     env:
       TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
       TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
@@ -49,31 +48,25 @@ jobs:
             SIZE=$(wc -c < search_page.html)
             echo "HTML получен, размер: $SIZE"
 
-            tr '\n' ' ' < search_page.html \
-              | sed 's/Add to Cart/\nAdd to Cart/g' \
-              | sed 's/Sold Out/\nSold Out/g' \
-              > chunks.txt
-
-            echo "Проверяем фрагменты страницы"
+            tr '\n' ' ' < search_page.html > one_line.html
+            sed 's/Add to Cart/\nAdd to Cart/g; s/Sold Out/\nSold Out/g' one_line.html > chunks.txt
 
             while IFS= read -r CHUNK; do
               [ -z "$CHUNK" ] && continue
 
-              if echo "$CHUNK" | grep -Eiq 'gazelle' && echo "$CHUNK" | grep -Eiq 'second seat'; then
+              if echo "$CHUNK" | grep -iq "gazelle" && echo "$CHUNK" | grep -iq "second seat"; then
                 echo "Найден фрагмент second seat"
 
-                if echo "$CHUNK" | grep -Eiq 'Sold Out'; then
+                if echo "$CHUNK" | grep -iq "Sold Out"; then
                   echo "Во фрагменте указано Sold Out"
                   continue
                 fi
 
-                if echo "$CHUNK" | grep -Eiq 'Add to Cart|Only [0-9]+ Left!|Only [0-9]+ left!'; then
+                if echo "$CHUNK" | grep -Eiq "Add to Cart|Only [0-9]+ Left!|Only [0-9]+ left!"; then
                   FOUND=true
                   MATCH_TEXT="Найден second seat с признаком наличия в одном блоке товара"
                   echo "Найден товар в наличии"
                   break
-                else
-                  echo "Second seat найден, но признака наличия в этом же фрагменте нет"
                 fi
               fi
             done < chunks.txt
@@ -84,11 +77,9 @@ jobs:
           CURRENT_TIME=$(date "+%Y-%m-%d %H:%M:%S %Z")
 
           IS_REPORT_TIME=false
-
           if [ "$CURRENT_HOUR" = "06" ] && [ "$CURRENT_MIN" = "30" ]; then
             IS_REPORT_TIME=true
           fi
-
           if [ "$CURRENT_HOUR" = "16" ] && [ "$CURRENT_MIN" = "30" ]; then
             IS_REPORT_TIME=true
           fi
@@ -115,11 +106,9 @@ jobs:
 
           if [ -n "$TELEGRAM_MSG" ]; then
             echo "Отправка сообщения в Telegram"
-
             TG_RESPONSE=$(curl -sS -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" \
               -d "chat_id=$TG_CHAT_ID" \
               --data-urlencode "text=$TELEGRAM_MSG")
-
             echo "$TG_RESPONSE"
 
             if echo "$TG_RESPONSE" | grep -q '"ok":true'; then
