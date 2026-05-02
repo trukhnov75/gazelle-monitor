@@ -49,19 +49,34 @@ jobs:
             SIZE=$(wc -c < search_page.html)
             echo "HTML получен, размер: $SIZE"
 
-            if grep -Eiq 'Gazelle S 2 Second Seat|Second Seat for Gazelle|Gazelle.*Second Seat|Second Seat.*Gazelle' search_page.html; then
-              echo "Найден текст Gazelle Second Seat"
+            tr '\n' ' ' < search_page.html \
+              | sed 's/Add to Cart/\nAdd to Cart/g' \
+              | sed 's/Sold Out/\nSold Out/g' \
+              > chunks.txt
 
-              if grep -Eiq 'Only 1 Left!|Only 2 Left!|Add to Cart' search_page.html; then
-                FOUND=true
-                MATCH_TEXT="Gazelle Second Seat найден на странице поиска с признаком наличия"
-                echo "Найден признак наличия"
-              else
-                echo "Признак наличия не найден"
+            echo "Проверяем фрагменты страницы"
+
+            while IFS= read -r CHUNK; do
+              [ -z "$CHUNK" ] && continue
+
+              if echo "$CHUNK" | grep -Eiq 'gazelle' && echo "$CHUNK" | grep -Eiq 'second seat'; then
+                echo "Найден фрагмент second seat"
+
+                if echo "$CHUNK" | grep -Eiq 'Sold Out'; then
+                  echo "Во фрагменте указано Sold Out"
+                  continue
+                fi
+
+                if echo "$CHUNK" | grep -Eiq 'Add to Cart|Only [0-9]+ Left!|Only [0-9]+ left!'; then
+                  FOUND=true
+                  MATCH_TEXT="Найден second seat с признаком наличия в одном блоке товара"
+                  echo "Найден товар в наличии"
+                  break
+                else
+                  echo "Second seat найден, но признака наличия в этом же фрагменте нет"
+                fi
               fi
-            else
-              echo "Gazelle Second Seat на странице не найден"
-            fi
+            done < chunks.txt
           fi
 
           CURRENT_HOUR=$(date +%H)
@@ -83,13 +98,15 @@ jobs:
 
           if [ "$FOUND" = true ]; then
             TELEGRAM_MSG="🚨 Gazelle Second Seat в наличии!
-            🔗 $SEARCH_URL
-            📝 $MATCH_TEXT
-            📅 $CURRENT_TIME"
 
+🔗 $SEARCH_URL
+📝 $MATCH_TEXT
+📅 $CURRENT_TIME"
             NEW_COUNT=0
           elif [ "$IS_REPORT_TIME" = true ]; then
-            TELEGRAM_MSG="📊 Отчет о поиске%0A🔍 Проверок с последнего сообщения: $COUNT%0A📅 $CURRENT_TIME"
+            TELEGRAM_MSG="📊 Отчет о поиске
+🔍 Проверок с последнего сообщения: $COUNT
+📅 $CURRENT_TIME"
             NEW_COUNT=0
           fi
 
